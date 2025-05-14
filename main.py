@@ -1,5 +1,5 @@
 import sys
-sys.path.append("C:\Users\User\Desktop\PracticeUdemyReact2\discordHistorySearch\mastra")]
+sys.path.append("C:\Users\User\Desktop\PracticeUdemyReact2\discordHistorySearch\mastra_ai")]
 
   # mastraを置いた場所
 import discord
