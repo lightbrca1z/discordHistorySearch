@@ -1,44 +1,33 @@
-import sys
-sys.path.append("C:\Users\User\Desktop\PracticeUdemyReact2\discordHistorySearch\mastra_ai")]
-
-  # mastraを置いた場所
-import discord
-from agent.agenthub import AgentHub
-from agent.openai_agent import OpenAIAgent
-# Discord Bot トークン
 import os
+import discord
+import openai
+import traceback
 from dotenv import load_dotenv
 
-# .envファイルを読み込む
+# .env読み込み
 load_dotenv()
 
-# 環境変数を取得
+# 環境変数取得
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-# OpenAI APIキー
-OPENAI_API_KEY = 'YOUR_OPENAI_API_KEY'
+if not DISCORD_TOKEN or not OPENAI_API_KEY:
+    print("環境変数 DISCORD_TOKEN または OPENAI_API_KEY が設定されていません。")
+    exit(1)
 
-# Intents（メッセージ履歴取得に必要）
+# OpenAIクライアント初期化（v1.0.0以降の新しい書き方）
+client = openai.OpenAI(api_key=OPENAI_API_KEY)
+
+# Intents設定
 intents = discord.Intents.default()
 intents.message_content = True
 
 # Discordクライアント
-client = discord.Client(intents=intents)
+discord_client = discord.Client(intents=intents)
 
-# Mastraエージェントハブ初期化（MCP有効）
-hub = AgentHub(enable_mcp=True)
-
-# エージェントを役割ごとに登録
-search_agent = OpenAIAgent(api_key=OPENAI_API_KEY)
-expert_agent = OpenAIAgent(api_key=OPENAI_API_KEY)
-
-hub.register_agent("search_agent", search_agent, role="履歴分析担当")
-hub.register_agent("expert_agent", expert_agent, role="会話生成担当")
-
-# Discordメッセージイベント
-@client.event
+@discord_client.event
 async def on_message(message):
-    if message.author == client.user:
+    if message.author == discord_client.user:
         return
 
     if message.content.startswith('!smart'):
@@ -46,26 +35,32 @@ async def on_message(message):
 
         # チャンネル履歴取得
         history = []
-        async for msg in message.channel.history(limit=100):
+        async for msg in message.channel.history(limit=20):
             history.append(f"{msg.author.name}: {msg.content}")
 
         history_text = "\n".join(history)
 
-        # MCPプロンプト作成
         prompt = f"""
-あなたたちは、以下の役割を持ったエージェントです。
-- 履歴分析担当: 履歴を解析し、重要な発言やパターンを見つける。
-- 会話生成担当: 履歴分析をもとに、ユーザーの「{query}」に対してGPT風に自然な回答を作る。
+以下のDiscord履歴を分析し、ユーザーの「{query}」に対して適切な回答を生成してください。
 
-以下がDiscord履歴です:
+履歴:
 {history_text}
 
-では、協力して最適な返答を作ってください。
+回答は自然な会話形式で、履歴の文脈を考慮して作成してください。
 """
 
-        # MCPモードで複合的に回答生成
-        response = hub.ask_with_mcp(prompt)
+        try:
+            response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": "あなたはDiscordの会話履歴を分析し、適切な回答を生成するアシスタントです。"},
+                    {"role": "user", "content": prompt}
+                ]
+            )
+            await message.channel.send(response.choices[0].message.content)
+        except Exception as e:
+            await message.channel.send(f"エラーが発生しました: {e}")
+            traceback.print_exc()
 
-        await message.channel.send(response)
-
-client.run(DISCORD_TOKEN)
+# 実行
+discord_client.run(DISCORD_TOKEN)
